@@ -1,0 +1,146 @@
+# Kubernetes Manifest Utilities for mq
+# https://kubernetes.io/docs/concepts/overview/working-with-objects/
+
+import "yaml"
+
+# Parses a Kubernetes manifest YAML string and returns the parsed structure.
+def k8s_parse(input):
+  yaml::yaml_parse(to_string(input))
+end
+
+# Returns the kind of a manifest (e.g. "Deployment", "Service").
+def k8s_kind(manifest):
+  manifest["kind"]
+end
+
+# Returns the apiVersion of a manifest.
+def k8s_api_version(manifest):
+  manifest["apiVersion"]
+end
+
+# Returns the name from metadata.
+def k8s_name(manifest):
+  if (is_none(manifest["metadata"])): None else: manifest["metadata"]["name"]
+end
+
+# Returns the namespace from metadata, or None if not set.
+def k8s_namespace(manifest):
+  if (is_none(manifest["metadata"])): None else: manifest["metadata"]["namespace"]
+end
+
+# Returns the labels dict from metadata.
+def k8s_labels(manifest):
+  if (is_none(manifest["metadata"])): dict()
+  elif (is_none(manifest["metadata"]["labels"])): dict()
+  else: manifest["metadata"]["labels"]
+end
+
+# Returns the annotations dict from metadata.
+def k8s_annotations(manifest):
+  if (is_none(manifest["metadata"])): dict()
+  elif (is_none(manifest["metadata"]["annotations"])): dict()
+  else: manifest["metadata"]["annotations"]
+end
+
+# Returns the spec object of a manifest.
+def k8s_spec(manifest):
+  manifest["spec"]
+end
+
+def _k8s_pod_spec(manifest):
+  let kind = k8s_kind(manifest)
+  | if (kind == "Pod"):
+      k8s_spec(manifest)
+    elif (kind == "CronJob"):
+      let spec = k8s_spec(manifest)
+      | if (is_none(spec)): None
+        elif (is_none(spec["jobTemplate"])): None
+        elif (is_none(spec["jobTemplate"]["spec"])): None
+        elif (is_none(spec["jobTemplate"]["spec"]["template"])): None
+        else: spec["jobTemplate"]["spec"]["template"]["spec"]
+    else:
+      let spec = k8s_spec(manifest)
+      | if (is_none(spec)): None
+        elif (is_none(spec["template"])): None
+        else: spec["template"]["spec"]
+end
+
+# Returns the containers array from a manifest.
+# Supports Pod, Deployment, DaemonSet, StatefulSet, Job, and CronJob.
+def k8s_containers(manifest):
+  let pod_spec = _k8s_pod_spec(manifest)
+  | if (is_none(pod_spec)): []
+    elif (is_none(pod_spec["containers"])): []
+    else: pod_spec["containers"]
+end
+
+# Returns the initContainers array from a manifest.
+def k8s_init_containers(manifest):
+  let pod_spec = _k8s_pod_spec(manifest)
+  | if (is_none(pod_spec)): []
+    elif (is_none(pod_spec["initContainers"])): []
+    else: pod_spec["initContainers"]
+end
+
+# Returns all container image strings from a manifest (containers + initContainers).
+def k8s_images(manifest):
+  map(k8s_containers(manifest) + k8s_init_containers(manifest), fn(c): c["image"];)
+end
+
+# Returns the env array from a container dict.
+def k8s_env(container):
+  if (is_none(container["env"])): [] else: container["env"]
+end
+
+# Returns the ports array from all containers in a manifest.
+def k8s_ports(manifest):
+  fold(k8s_containers(manifest), [], fn(acc, c):
+    if (is_none(c["ports"])): acc else: acc + c["ports"]
+  ;)
+end
+
+# Returns the replica count from a manifest, or None if not applicable.
+def k8s_replicas(manifest):
+  let spec = k8s_spec(manifest)
+  | if (is_none(spec)): None else: spec["replicas"]
+end
+
+# Returns the selector dict from a manifest.
+def k8s_selector(manifest):
+  let spec = k8s_spec(manifest)
+  | if (is_none(spec)): dict()
+    elif (is_none(spec["selector"])): dict()
+    else: spec["selector"]
+end
+
+# Returns the resource requests/limits dict from a container.
+def k8s_resources(container):
+  if (is_none(container["resources"])): dict() else: container["resources"]
+end
+
+# Returns true if the manifest kind is Deployment.
+def k8s_is_deployment(manifest): k8s_kind(manifest) == "Deployment";
+
+# Returns true if the manifest kind is Service.
+def k8s_is_service(manifest): k8s_kind(manifest) == "Service";
+
+# Returns true if the manifest kind is ConfigMap.
+def k8s_is_configmap(manifest): k8s_kind(manifest) == "ConfigMap";
+
+# Returns true if the manifest kind is Pod.
+def k8s_is_pod(manifest): k8s_kind(manifest) == "Pod";
+
+# Returns a Markdown table summarizing key fields of a manifest.
+def k8s_to_markdown_table(manifest):
+  let name = coalesce(k8s_name(manifest), "")
+  | let ns = coalesce(k8s_namespace(manifest), "default")
+  | let kind = coalesce(k8s_kind(manifest), "")
+  | let api = coalesce(k8s_api_version(manifest), "")
+  | let images = join(k8s_images(manifest), ", ")
+  | "| Field | Value |\n| --- | --- |\n" +
+    "| Kind | " + kind + " |\n" +
+    "| API Version | " + api + " |\n" +
+    "| Name | " + name + " |\n" +
+    "| Namespace | " + ns + " |\n" +
+    "| Images | " + images + " |"
+end

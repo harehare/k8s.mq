@@ -1,0 +1,271 @@
+include "test"
+| include "kubernetes"
+|
+
+let deployment_yaml = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: nginx-deployment\n  namespace: default\n  labels:\n    app: nginx\n    version: v1\n  annotations:\n    deployment.kubernetes.io/revision: \"1\"\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: nginx\n  template:\n    metadata:\n      labels:\n        app: nginx\n    spec:\n      initContainers:\n        - name: init-setup\n          image: busybox:1.28\n          command:\n            - sh\n            - -c\n            - echo init\n      containers:\n        - name: nginx\n          image: nginx:1.21\n          ports:\n            - containerPort: 80\n              protocol: TCP\n          env:\n            - name: ENV_VAR\n              value: hello\n            - name: SECRET_VAR\n              valueFrom:\n                secretKeyRef:\n                  name: my-secret\n                  key: password\n          resources:\n            requests:\n              cpu: 100m\n              memory: 128Mi\n            limits:\n              cpu: 500m\n              memory: 256Mi\n"
+
+| let service_yaml = "apiVersion: v1\nkind: Service\nmetadata:\n  name: nginx-service\n  namespace: default\nspec:\n  selector:\n    app: nginx\n  ports:\n    - protocol: TCP\n      port: 80\n      targetPort: 80\n  type: ClusterIP\n"
+
+| let pod_yaml = "apiVersion: v1\nkind: Pod\nmetadata:\n  name: my-pod\n  namespace: staging\n  labels:\n    app: myapp\nspec:\n  containers:\n    - name: app\n      image: myapp:latest\n      ports:\n        - containerPort: 8080\n"
+
+| let cronjob_yaml = "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: my-cronjob\n  namespace: default\nspec:\n  schedule: 0 * * * *\n  jobTemplate:\n    spec:\n      template:\n        spec:\n          containers:\n            - name: worker\n              image: worker:1.0\n          restartPolicy: OnFailure\n"
+
+|
+
+# -- k8s_parse --
+
+def test_k8s_parse_returns_dict():
+  let manifest = k8s_parse(deployment_yaml)
+  | assert(is_dict(manifest))
+end
+
+# -- k8s_kind --
+
+def test_k8s_kind_deployment():
+  let manifest = k8s_parse(deployment_yaml)
+  | assert_eq(k8s_kind(manifest), "Deployment")
+end
+
+def test_k8s_kind_service():
+  let manifest = k8s_parse(service_yaml)
+  | assert_eq(k8s_kind(manifest), "Service")
+end
+
+def test_k8s_kind_pod():
+  let manifest = k8s_parse(pod_yaml)
+  | assert_eq(k8s_kind(manifest), "Pod")
+end
+
+# -- k8s_api_version --
+
+def test_k8s_api_version_deployment():
+  let manifest = k8s_parse(deployment_yaml)
+  | assert_eq(k8s_api_version(manifest), "apps/v1")
+end
+
+def test_k8s_api_version_service():
+  let manifest = k8s_parse(service_yaml)
+  | assert_eq(k8s_api_version(manifest), "v1")
+end
+
+# -- k8s_name --
+
+def test_k8s_name():
+  let manifest = k8s_parse(deployment_yaml)
+  | assert_eq(k8s_name(manifest), "nginx-deployment")
+end
+
+def test_k8s_name_pod():
+  let manifest = k8s_parse(pod_yaml)
+  | assert_eq(k8s_name(manifest), "my-pod")
+end
+
+# -- k8s_namespace --
+
+def test_k8s_namespace():
+  let manifest = k8s_parse(deployment_yaml)
+  | assert_eq(k8s_namespace(manifest), "default")
+end
+
+def test_k8s_namespace_staging():
+  let manifest = k8s_parse(pod_yaml)
+  | assert_eq(k8s_namespace(manifest), "staging")
+end
+
+# -- k8s_labels --
+
+def test_k8s_labels():
+  let manifest = k8s_parse(deployment_yaml)
+  | let labels = k8s_labels(manifest)
+  | assert_eq(labels["app"], "nginx")
+  | assert_eq(labels["version"], "v1")
+end
+
+def test_k8s_labels_empty_for_missing():
+  let result = k8s_labels(dict())
+  | assert_eq(len(keys(result)), 0)
+end
+
+# -- k8s_annotations --
+
+def test_k8s_annotations():
+  let manifest = k8s_parse(deployment_yaml)
+  | let ann = k8s_annotations(manifest)
+  | assert(!is_none(ann["deployment.kubernetes.io/revision"]))
+end
+
+def test_k8s_annotations_empty_for_missing():
+  let manifest = k8s_parse(service_yaml)
+  | let ann = k8s_annotations(manifest)
+  | assert_eq(len(keys(ann)), 0)
+end
+
+# -- k8s_containers --
+
+def test_k8s_containers_deployment():
+  let manifest = k8s_parse(deployment_yaml)
+  | let containers = k8s_containers(manifest)
+  | assert_eq(len(containers), 1)
+  | assert_eq(containers[0]["name"], "nginx")
+end
+
+def test_k8s_containers_pod():
+  let manifest = k8s_parse(pod_yaml)
+  | let containers = k8s_containers(manifest)
+  | assert_eq(len(containers), 1)
+  | assert_eq(containers[0]["name"], "app")
+end
+
+def test_k8s_containers_cronjob():
+  let manifest = k8s_parse(cronjob_yaml)
+  | let containers = k8s_containers(manifest)
+  | assert_eq(len(containers), 1)
+  | assert_eq(containers[0]["name"], "worker")
+end
+
+def test_k8s_containers_service_empty():
+  let manifest = k8s_parse(service_yaml)
+  | assert_eq(k8s_containers(manifest), [])
+end
+
+# -- k8s_init_containers --
+
+def test_k8s_init_containers():
+  let manifest = k8s_parse(deployment_yaml)
+  | let inits = k8s_init_containers(manifest)
+  | assert_eq(len(inits), 1)
+  | assert_eq(inits[0]["name"], "init-setup")
+  | assert_eq(inits[0]["image"], "busybox:1.28")
+end
+
+def test_k8s_init_containers_empty_for_pod():
+  let manifest = k8s_parse(pod_yaml)
+  | assert_eq(k8s_init_containers(manifest), [])
+end
+
+# -- k8s_images --
+
+def test_k8s_images_deployment():
+  let manifest = k8s_parse(deployment_yaml)
+  | let images = k8s_images(manifest)
+  | assert_eq(len(images), 2)
+  | assert(fold(images, false, fn(acc, img): acc || img == "nginx:1.21";))
+  | assert(fold(images, false, fn(acc, img): acc || img == "busybox:1.28";))
+end
+
+def test_k8s_images_pod():
+  let manifest = k8s_parse(pod_yaml)
+  | let images = k8s_images(manifest)
+  | assert_eq(len(images), 1)
+  | assert_eq(images[0], "myapp:latest")
+end
+
+# -- k8s_env --
+
+def test_k8s_env():
+  let manifest = k8s_parse(deployment_yaml)
+  | let container = first(k8s_containers(manifest))
+  | let env = k8s_env(container)
+  | assert_eq(len(env), 2)
+  | assert_eq(env[0]["name"], "ENV_VAR")
+  | assert_eq(env[0]["value"], "hello")
+end
+
+def test_k8s_env_empty_for_missing():
+  let manifest = k8s_parse(cronjob_yaml)
+  | let container = first(k8s_containers(manifest))
+  | assert_eq(k8s_env(container), [])
+end
+
+# -- k8s_ports --
+
+def test_k8s_ports():
+  let manifest = k8s_parse(deployment_yaml)
+  | let ports = k8s_ports(manifest)
+  | assert_eq(len(ports), 1)
+  | assert_eq(ports[0]["containerPort"], 80)
+end
+
+def test_k8s_ports_service_empty():
+  let manifest = k8s_parse(service_yaml)
+  | assert_eq(k8s_ports(manifest), [])
+end
+
+# -- k8s_replicas --
+
+def test_k8s_replicas():
+  let manifest = k8s_parse(deployment_yaml)
+  | assert_eq(k8s_replicas(manifest), 3)
+end
+
+def test_k8s_replicas_none_for_service():
+  let manifest = k8s_parse(service_yaml)
+  | assert_none(k8s_replicas(manifest))
+end
+
+# -- k8s_selector --
+
+def test_k8s_selector():
+  let manifest = k8s_parse(deployment_yaml)
+  | let sel = k8s_selector(manifest)
+  | assert(!is_none(sel["matchLabels"]))
+  | assert_eq(sel["matchLabels"]["app"], "nginx")
+end
+
+# -- k8s_resources --
+
+def test_k8s_resources():
+  let manifest = k8s_parse(deployment_yaml)
+  | let container = first(k8s_containers(manifest))
+  | let res = k8s_resources(container)
+  | assert(!is_none(res["requests"]))
+  | assert(!is_none(res["limits"]))
+  | assert_eq(res["requests"]["cpu"], "100m")
+  | assert_eq(res["limits"]["memory"], "256Mi")
+end
+
+def test_k8s_resources_empty_for_missing():
+  let manifest = k8s_parse(cronjob_yaml)
+  | let container = first(k8s_containers(manifest))
+  | let res = k8s_resources(container)
+  | assert_eq(len(keys(res)), 0)
+end
+
+# -- k8s_is_* --
+
+def test_k8s_is_deployment():
+  let manifest = k8s_parse(deployment_yaml)
+  | assert_true(k8s_is_deployment(manifest))
+  | assert_false(k8s_is_service(manifest))
+end
+
+def test_k8s_is_service():
+  let manifest = k8s_parse(service_yaml)
+  | assert_true(k8s_is_service(manifest))
+  | assert_false(k8s_is_deployment(manifest))
+end
+
+def test_k8s_is_pod():
+  let manifest = k8s_parse(pod_yaml)
+  | assert_true(k8s_is_pod(manifest))
+  | assert_false(k8s_is_deployment(manifest))
+end
+
+# -- k8s_to_markdown_table --
+
+def test_k8s_to_markdown_table():
+  let manifest = k8s_parse(deployment_yaml)
+  | let table = k8s_to_markdown_table(manifest)
+  | assert(is_string(table))
+  | assert(contains(table, "Deployment"))
+  | assert(contains(table, "nginx-deployment"))
+  | assert(contains(table, "nginx:1.21"))
+  | assert(contains(table, "busybox:1.28"))
+end
+
+def test_k8s_to_markdown_table_service():
+  let manifest = k8s_parse(service_yaml)
+  | let table = k8s_to_markdown_table(manifest)
+  | assert(contains(table, "Service"))
+  | assert(contains(table, "nginx-service"))
+end
