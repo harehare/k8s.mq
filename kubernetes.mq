@@ -47,22 +47,25 @@ def k8s_spec(manifest):
   manifest["spec"]
 end
 
+def _k8s_cronjob_pod_spec(spec):
+  if (is_none(spec)): None
+  elif (is_none(spec["jobTemplate"])): None
+  elif (is_none(spec["jobTemplate"]["spec"])): None
+  elif (is_none(spec["jobTemplate"]["spec"]["template"])): None
+  else: spec["jobTemplate"]["spec"]["template"]["spec"]
+end
+
+def _k8s_workload_pod_spec(spec):
+  if (is_none(spec)): None
+  elif (is_none(spec["template"])): None
+  else: spec["template"]["spec"]
+end
+
 def _k8s_pod_spec(manifest):
   let kind = k8s_kind(manifest)
-  | if (kind == "Pod"):
-      k8s_spec(manifest)
-    elif (kind == "CronJob"):
-      let spec = k8s_spec(manifest)
-      | if (is_none(spec)): None
-        elif (is_none(spec["jobTemplate"])): None
-        elif (is_none(spec["jobTemplate"]["spec"])): None
-        elif (is_none(spec["jobTemplate"]["spec"]["template"])): None
-        else: spec["jobTemplate"]["spec"]["template"]["spec"]
-    else:
-      let spec = k8s_spec(manifest)
-      | if (is_none(spec)): None
-        elif (is_none(spec["template"])): None
-        else: spec["template"]["spec"]
+  | if (kind == "Pod"): k8s_spec(manifest)
+    elif (kind == "CronJob"): _k8s_cronjob_pod_spec(k8s_spec(manifest))
+    else: _k8s_workload_pod_spec(k8s_spec(manifest))
 end
 
 # Returns the containers array from a manifest.
