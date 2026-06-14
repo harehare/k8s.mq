@@ -10,6 +10,10 @@ let deployment_yaml = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name:
 
 | let cronjob_yaml = "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: my-cronjob\n  namespace: default\nspec:\n  schedule: 0 * * * *\n  jobTemplate:\n    spec:\n      template:\n        spec:\n          containers:\n            - name: worker\n              image: worker:1.0\n          restartPolicy: OnFailure\n"
 
+| let configmap_yaml = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: my-config\n  namespace: default\n  labels:\n    app: myapp\ndata:\n  key1: value1\n  key2: value2\n"
+
+| let statefulset_yaml = "apiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: my-statefulset\n  namespace: production\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: myapp\n  template:\n    metadata:\n      labels:\n        app: myapp\n    spec:\n      containers:\n        - name: app\n          image: myapp:2.0\n          resources:\n            requests:\n              cpu: 200m\n              memory: 256Mi\n            limits:\n              cpu: 1000m\n              memory: 512Mi\n"
+
 |
 
 # -- k8s_parse --
@@ -268,4 +272,333 @@ def test_k8s_to_markdown_table_service():
   | let table = k8s_to_markdown_table(manifest)
   | assert(contains(table, "Service"))
   | assert(contains(table, "nginx-service"))
+end
+
+# -- k8s_stringify --
+
+def test_k8s_stringify_returns_string():
+  let manifest = k8s_parse(deployment_yaml)
+  | assert(is_string(k8s_stringify(manifest)))
+end
+
+def test_k8s_stringify_deployment_contains_kind():
+  let manifest = k8s_parse(deployment_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "kind: Deployment"))
+end
+
+def test_k8s_stringify_deployment_contains_api_version():
+  let manifest = k8s_parse(deployment_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "apiVersion: apps/v1"))
+end
+
+def test_k8s_stringify_deployment_contains_metadata():
+  let manifest = k8s_parse(deployment_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "name: nginx-deployment"))
+  | assert(contains(result, "namespace: default"))
+end
+
+def test_k8s_stringify_deployment_contains_labels():
+  let manifest = k8s_parse(deployment_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "app: nginx"))
+  | assert(contains(result, "version: v1"))
+end
+
+def test_k8s_stringify_deployment_contains_spec():
+  let manifest = k8s_parse(deployment_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "replicas: 3"))
+end
+
+def test_k8s_stringify_deployment_contains_images():
+  let manifest = k8s_parse(deployment_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "nginx:1.21"))
+  | assert(contains(result, "busybox:1.28"))
+end
+
+def test_k8s_stringify_deployment_roundtrip_kind():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_kind(reparsed), "Deployment")
+end
+
+def test_k8s_stringify_deployment_roundtrip_api_version():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_api_version(reparsed), "apps/v1")
+end
+
+def test_k8s_stringify_deployment_roundtrip_name():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_name(reparsed), "nginx-deployment")
+end
+
+def test_k8s_stringify_deployment_roundtrip_namespace():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_namespace(reparsed), "default")
+end
+
+def test_k8s_stringify_deployment_roundtrip_labels():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let labels = k8s_labels(reparsed)
+  | assert_eq(labels["app"], "nginx")
+  | assert_eq(labels["version"], "v1")
+end
+
+def test_k8s_stringify_deployment_roundtrip_annotations():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let ann = k8s_annotations(reparsed)
+  | assert(!is_none(ann["deployment.kubernetes.io/revision"]))
+end
+
+def test_k8s_stringify_deployment_roundtrip_replicas():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_replicas(reparsed), 3)
+end
+
+def test_k8s_stringify_deployment_roundtrip_containers():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let containers = k8s_containers(reparsed)
+  | assert_eq(len(containers), 1)
+  | assert_eq(containers[0]["name"], "nginx")
+end
+
+def test_k8s_stringify_deployment_roundtrip_init_containers():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let inits = k8s_init_containers(reparsed)
+  | assert_eq(len(inits), 1)
+  | assert_eq(inits[0]["name"], "init-setup")
+  | assert_eq(inits[0]["image"], "busybox:1.28")
+end
+
+def test_k8s_stringify_deployment_roundtrip_images():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let images = k8s_images(reparsed)
+  | assert_eq(len(images), 2)
+  | assert(fold(images, false, fn(acc, img): acc || img == "nginx:1.21";))
+  | assert(fold(images, false, fn(acc, img): acc || img == "busybox:1.28";))
+end
+
+def test_k8s_stringify_deployment_roundtrip_env():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let container = first(k8s_containers(reparsed))
+  | let env = k8s_env(container)
+  | assert_eq(len(env), 2)
+  | assert_eq(env[0]["name"], "ENV_VAR")
+  | assert_eq(env[0]["value"], "hello")
+end
+
+def test_k8s_stringify_deployment_roundtrip_ports():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let ports = k8s_ports(reparsed)
+  | assert_eq(len(ports), 1)
+  | assert_eq(ports[0]["containerPort"], 80)
+end
+
+def test_k8s_stringify_deployment_roundtrip_resources():
+  let manifest = k8s_parse(deployment_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let container = first(k8s_containers(reparsed))
+  | let res = k8s_resources(container)
+  | assert_eq(res["requests"]["cpu"], "100m")
+  | assert_eq(res["requests"]["memory"], "128Mi")
+  | assert_eq(res["limits"]["cpu"], "500m")
+  | assert_eq(res["limits"]["memory"], "256Mi")
+end
+
+def test_k8s_stringify_service_returns_string():
+  let manifest = k8s_parse(service_yaml)
+  | assert(is_string(k8s_stringify(manifest)))
+end
+
+def test_k8s_stringify_service_contains_kind():
+  let manifest = k8s_parse(service_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "kind: Service"))
+end
+
+def test_k8s_stringify_service_roundtrip_kind():
+  let manifest = k8s_parse(service_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_kind(reparsed), "Service")
+end
+
+def test_k8s_stringify_service_roundtrip_name():
+  let manifest = k8s_parse(service_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_name(reparsed), "nginx-service")
+end
+
+def test_k8s_stringify_service_roundtrip_namespace():
+  let manifest = k8s_parse(service_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_namespace(reparsed), "default")
+end
+
+def test_k8s_stringify_service_roundtrip_selector():
+  let manifest = k8s_parse(service_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let sel = k8s_selector(reparsed)
+  | assert_eq(sel["app"], "nginx")
+end
+
+def test_k8s_stringify_pod_contains_kind():
+  let manifest = k8s_parse(pod_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "kind: Pod"))
+end
+
+def test_k8s_stringify_pod_roundtrip_kind():
+  let manifest = k8s_parse(pod_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_kind(reparsed), "Pod")
+end
+
+def test_k8s_stringify_pod_roundtrip_name():
+  let manifest = k8s_parse(pod_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_name(reparsed), "my-pod")
+end
+
+def test_k8s_stringify_pod_roundtrip_namespace():
+  let manifest = k8s_parse(pod_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_namespace(reparsed), "staging")
+end
+
+def test_k8s_stringify_pod_roundtrip_labels():
+  let manifest = k8s_parse(pod_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_labels(reparsed)["app"], "myapp")
+end
+
+def test_k8s_stringify_pod_roundtrip_containers():
+  let manifest = k8s_parse(pod_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let containers = k8s_containers(reparsed)
+  | assert_eq(len(containers), 1)
+  | assert_eq(containers[0]["name"], "app")
+  | assert_eq(containers[0]["image"], "myapp:latest")
+end
+
+def test_k8s_stringify_pod_roundtrip_ports():
+  let manifest = k8s_parse(pod_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let ports = k8s_ports(reparsed)
+  | assert_eq(len(ports), 1)
+  | assert_eq(ports[0]["containerPort"], 8080)
+end
+
+def test_k8s_stringify_cronjob_contains_kind():
+  let manifest = k8s_parse(cronjob_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "kind: CronJob"))
+end
+
+def test_k8s_stringify_cronjob_roundtrip_kind():
+  let manifest = k8s_parse(cronjob_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_kind(reparsed), "CronJob")
+end
+
+def test_k8s_stringify_cronjob_roundtrip_name():
+  let manifest = k8s_parse(cronjob_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_name(reparsed), "my-cronjob")
+end
+
+def test_k8s_stringify_cronjob_roundtrip_containers():
+  let manifest = k8s_parse(cronjob_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let containers = k8s_containers(reparsed)
+  | assert_eq(len(containers), 1)
+  | assert_eq(containers[0]["name"], "worker")
+  | assert_eq(containers[0]["image"], "worker:1.0")
+end
+
+def test_k8s_stringify_configmap_contains_kind():
+  let manifest = k8s_parse(configmap_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "kind: ConfigMap"))
+end
+
+def test_k8s_stringify_configmap_roundtrip_kind():
+  let manifest = k8s_parse(configmap_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_kind(reparsed), "ConfigMap")
+end
+
+def test_k8s_stringify_configmap_roundtrip_name():
+  let manifest = k8s_parse(configmap_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_name(reparsed), "my-config")
+end
+
+def test_k8s_stringify_configmap_roundtrip_data():
+  let manifest = k8s_parse(configmap_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let data = reparsed["data"]
+  | assert_eq(data["key1"], "value1")
+  | assert_eq(data["key2"], "value2")
+end
+
+def test_k8s_stringify_statefulset_contains_kind():
+  let manifest = k8s_parse(statefulset_yaml)
+  | let result = k8s_stringify(manifest)
+  | assert(contains(result, "kind: StatefulSet"))
+end
+
+def test_k8s_stringify_statefulset_roundtrip_kind():
+  let manifest = k8s_parse(statefulset_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_kind(reparsed), "StatefulSet")
+end
+
+def test_k8s_stringify_statefulset_roundtrip_name():
+  let manifest = k8s_parse(statefulset_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_name(reparsed), "my-statefulset")
+end
+
+def test_k8s_stringify_statefulset_roundtrip_namespace():
+  let manifest = k8s_parse(statefulset_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_namespace(reparsed), "production")
+end
+
+def test_k8s_stringify_statefulset_roundtrip_replicas():
+  let manifest = k8s_parse(statefulset_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | assert_eq(k8s_replicas(reparsed), 2)
+end
+
+def test_k8s_stringify_statefulset_roundtrip_containers():
+  let manifest = k8s_parse(statefulset_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let containers = k8s_containers(reparsed)
+  | assert_eq(len(containers), 1)
+  | assert_eq(containers[0]["name"], "app")
+  | assert_eq(containers[0]["image"], "myapp:2.0")
+end
+
+def test_k8s_stringify_statefulset_roundtrip_resources():
+  let manifest = k8s_parse(statefulset_yaml)
+  | let reparsed = k8s_parse(k8s_stringify(manifest))
+  | let res = k8s_resources(first(k8s_containers(reparsed)))
+  | assert_eq(res["requests"]["cpu"], "200m")
+  | assert_eq(res["limits"]["memory"], "512Mi")
 end

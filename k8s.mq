@@ -133,6 +133,11 @@ def k8s_is_configmap(manifest): k8s_kind(manifest) == "ConfigMap";
 # Returns true if the manifest kind is Pod.
 def k8s_is_pod(manifest): k8s_kind(manifest) == "Pod";
 
+# Converts a parsed manifest dict back to a Kubernetes manifest YAML string.
+def k8s_stringify(manifest):
+  yaml::yaml_stringify(manifest)
+end
+
 # Returns a Markdown table summarizing key fields of a manifest.
 def k8s_to_markdown_table(manifest):
   let name = coalesce(k8s_name(manifest), "")
