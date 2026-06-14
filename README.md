@@ -1,6 +1,6 @@
-<h1 align="center">kubernetes.mq</h1>
+<h1 align="center">k8s.mq</h1>
 
-A [Kubernetes](https://kubernetes.io) manifest utility module implemented for [mq](https://github.com/harehare/mq).
+A [Kubernetes](https://kubernetes.io) manifest utility module for [mq](https://github.com/harehare/mq).
 
 ## Features
 
@@ -13,17 +13,17 @@ A [Kubernetes](https://kubernetes.io) manifest utility module implemented for [m
 
 ## Installation
 
-Copy `kubernetes.mq` to your mq module directory, or reference it with `-L`.
+Copy `k8s.mq` to your mq module directory, or reference it with `-L`.
 
 ```sh
-cp kubernetes.mq ~/.local/mq/config/
+cp k8s.mq ~/.local/mq/config/
 ```
 
 ## Usage
 
 ```sh
 mq -L /path/to/modules -I raw \
-  'import "kubernetes" | kubernetes::k8s_parse(.) | kubernetes::k8s_images(.)' deployment.yaml
+  'import "k8s" | k8s::k8s_parse(.) | k8s::k8s_images(.)' deployment.yaml
 ```
 
 ## API
@@ -100,20 +100,16 @@ spec:
 
 ```sh
 # Get all container images
-mq -L . -I raw 'import "kubernetes" | kubernetes::k8s_parse(.) | kubernetes::k8s_images(.)' deployment.yaml
+mq -L . -I raw 'import "k8s" | k8s::k8s_parse(.) | k8s::k8s_images(.)' deployment.yaml
 # => ["nginx:1.21"]
 
 # Check if it is a Deployment
-mq -L . -I raw 'import "kubernetes" | kubernetes::k8s_parse(.) | kubernetes::k8s_is_deployment(.)' deployment.yaml
+mq -L . -I raw 'import "k8s" | k8s::k8s_parse(.) | k8s::k8s_is_deployment(.)' deployment.yaml
 # => true
 
 # Render a Markdown summary
-mq -L . -I raw 'import "kubernetes" | kubernetes::k8s_parse(.) | kubernetes::k8s_to_markdown_table(.)' deployment.yaml
+mq -L . -I raw 'import "k8s" | k8s::k8s_parse(.) | k8s::k8s_to_markdown_table(.)' deployment.yaml
 ```
-
-## Compatibility
-
-Requires [mq](https://github.com/harehare/mq) v0.5 or later.
 
 ## License
 
