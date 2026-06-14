@@ -19,6 +19,20 @@ Copy `k8s.mq` to your mq module directory, or reference it with `-L`.
 cp k8s.mq ~/.local/mq/config/
 ```
 
+### HTTP Import (no local installation needed)
+
+If `mq` was built with the `http-import` feature, you can import directly from GitHub without any local setup:
+
+```sh
+mq -I raw 'import "github.com/harehare/k8s.mq" | k8s::k8s_parse(.) | k8s::k8s_images(.)' deployment.yaml
+```
+
+Pin to a specific release with `@vX.Y.Z`:
+
+```sh
+mq -I raw 'import "github.com/harehare/k8s.mq@v0.1.0" | k8s::k8s_parse(.) | k8s::k8s_images(.)' deployment.yaml
+```
+
 ## Usage
 
 ```sh

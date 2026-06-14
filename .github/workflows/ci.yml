@@ -21,4 +21,4 @@ jobs:
         with:
           bins: test
       - name: Run tests
-        run: mq-test kubernetes_tests.mq
+        run: mq-test k8s_tests.mq
